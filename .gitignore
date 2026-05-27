@@ -22,3 +22,5 @@ __pycache__/
 *.pyo
 *.pyd
 my-tool/node_modules/
+checkpoints/
+arkhe_world_model.egg-info/
