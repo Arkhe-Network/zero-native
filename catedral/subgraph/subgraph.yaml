@@ -1,0 +1,30 @@
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: ERC8257ToolRegistry
+    network: base
+    source:
+      address: "0x265BB2...D2cf1"
+      abi: ERC8257ToolRegistry
+      startBlock: 42424242
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - Tool
+        - Verification
+        - RegistryStats
+      abis:
+        - name: ERC8257ToolRegistry
+          file: ./abis/ERC8257ToolRegistry.json
+      eventHandlers:
+        - event: ToolRegistered(indexed bytes32,string,string,bytes32,indexed address,uint256)
+          handler: handleToolRegistered
+        - event: ToolUpdated(indexed bytes32,string,bytes32,uint256)
+          handler: handleToolUpdated
+        - event: ToolVerified(indexed bytes32,indexed address,bool)
+          handler: handleToolVerified
+      file: ./src/mapping.ts

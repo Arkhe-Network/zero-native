@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    cmake \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/ggerganov/llama.cpp.git /app/llama.cpp
+WORKDIR /app/llama.cpp
+RUN make -j4
+
+COPY catedral/python/catedral_bridge/arkhe-os.gguf /app/arkhe-os.gguf
+
+EXPOSE 8080
+
+CMD ["./llama-server", "-m", "/app/arkhe-os.gguf", "--host", "0.0.0.0", "--port", "8080"]

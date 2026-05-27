@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════
+# ERC8257 Subgraph — The Graph Protocol
+# Substrato 889.2 • ARKHE Cathedral
+# ═══════════════════════════════════════════════════════════════
+
+type Tool @entity {
+  id: ID!                          # toolHash (bytes32)
+  name: String!
+  metadataURI: String!
+  checksum: Bytes!
+  owner: Bytes!
+  registeredAt: BigInt!
+  updatedAt: BigInt
+  exists: Boolean!
+  verifications: [Verification!]! @derivedFrom(field: "tool")
+}
+
+type Verification @entity {
+  id: ID!                          # txHash + logIndex
+  tool: Tool!
+  verifier: Bytes!
+  valid: Boolean!
+  timestamp: BigInt!
+}
+
+type RegistryStats @entity {
+  id: ID!                          # "singleton"
+  totalTools: BigInt!
+  totalVerifications: BigInt!
+  lastUpdate: BigInt!
+}
