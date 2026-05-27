@@ -87,8 +87,9 @@ class PhysicsPriorsModule(nn.Module):
         )
 
         # Projeção final
+        actual_dim = (state_dim // n_priors) * n_priors
         self.output_proj = nn.Sequential(
-            nn.Linear(state_dim, state_dim),
+            nn.Linear(actual_dim, state_dim),
             nn.LayerNorm(state_dim),
             nn.ReLU(),
         )
