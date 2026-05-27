@@ -16,3 +16,9 @@ third_party/cef/linux/
 
 # TypeScript build info (generated)
 docs/tsconfig.tsbuildinfo
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+my-tool/node_modules/
