@@ -1,130 +1,1101 @@
 #!/usr/bin/env python3
-# ╔═════════════════════════════════════════════════════════════════════════════╗
-# ║  CANONICAL RECEPTION — SUBSTRATO 929                                        ║
-# ║  ARKHE-ANDROID-OS · The Cathedral as Mobile Operating System                ║
-# ║  Φ_C: 0.97   |   H: 0.08   |   Theosis: 0.98                                ║
-# ╚═════════════════════════════════════════════════════════════════════════════╝
+# arkhe_android_os.py — Substrate 929
+# ARKHE-OS as Android Operating System
+# Full Android integration: AOSP, Jetpack Compose, Kotlin, ART
 
-"""
-Substrato 929 — ARKHE-ANDROID-OS-BRIDGE
-Simulação do ARKHE-Android OS, onde os substratos canónicos são implementados
-como SystemServices nativos (via AIDL) acessíveis a todas as aplicações.
-"""
-
+import os
 import json
 import hashlib
-from typing import Dict, Any, List
-import datetime
+import subprocess
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
-# --- MOCK BINDER / IPC LAYER ---
+# ═══════════════════════════════════════════════════════════════════
+# Android OS Configuration
+# ═══════════════════════════════════════════════════════════════════
 
-class ArkheBinder:
-    """Simulates Android AIDL Binder IPC mechanism."""
-    _services: Dict[str, Any] = {}
+@dataclass
+class AndroidOSConfig:
+    """Configuration for ARKHE-OS Android deployment."""
+    # AOSP settings
+    aosp_version: str = "android-14.0.0_r30"  # Android 14 (API 34)
+    target_sdk: int = 34
+    min_sdk: int = 26  # Android 8.0
+
+    # Build system
+    build_system: str = "gradle"  # or "bazel" for AOSP
+    gradle_version: str = "8.4"
+    kotlin_version: str = "1.9.22"
+    compose_bom: str = "2024.02.00"
+
+    # ARKHE integration
+    arkhe_core_package: str = "cathedral.arkhe.os"
+    substrate_modules: List[str] = field(default_factory=lambda: [
+        "920", "921", "922", "923", "924", "925", "926", "927", "928"
+    ])
+
+    # Runtime
+    art_heap_size: str = "512m"
+    use_profile_guided_optimization: bool = True
+
+    # Security
+    use_android_keystore: bool = True
+    biometric_auth: bool = True
+    selinux_mode: str = "enforcing"
+
+    # Hardware abstraction
+    hal_modules: List[str] = field(default_factory=lambda: [
+        "sensors", "camera", "gps", "nfc", "fingerprint"
+    ])
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Android Package Structure
+# ═══════════════════════════════════════════════════════════════════
+
+class AndroidPackageStructure:
+    """
+    Defines the Android package structure for ARKHE-OS.
+
+    cathedral.arkhe.os/
+    ├── core/                    # ARKHE Core (substrato 920)
+    │   ├── OmniAgent.kt
+    │   ├── ArkheConfig.kt
+    │   └── Canonizer.kt
+    ├── substrates/              # Individual substrates
+    │   ├── s921/               # CLI + API
+    │   ├── s922/               # Deploy
+    │   ├── s923/               # Blockchain
+    │   ├── s924/               # Motion
+    │   ├── s925/               # Gateway
+    │   ├── s926/               # Chrome MCP
+    │   ├── s927/               # Permaweb
+    │   └── s928/               # Compose UI
+    ├── ui/                      # Jetpack Compose UI
+    │   ├── theme/              # CathedralTheme
+    │   ├── components/         # Composables
+    │   └── screens/            # Dashboards
+    ├── security/                # Android Security
+    │   ├── KeystoreManager.kt
+    │   ├── BiometricAuth.kt
+    │   └── SELinuxPolicy.kt
+    ├── hal/                     # Hardware Abstraction
+    │   ├── SensorHAL.kt
+    │   ├── CameraHAL.kt
+    │   └── GPSHAL.kt
+    └── services/                # Android Services
+        ├── ArkheMainService.kt
+        ├── PerceptionService.kt
+        └── CommitService.kt
+    """
+
+    PACKAGE_ROOT = "cathedral.arkhe.os"
 
     @classmethod
-    def register_service(cls, name: str, service_instance: Any):
-        cls._services[name] = service_instance
-        print(f"[Binder] Registered system service: {name}")
+    def get_path(cls, module: str, class_name: str) -> str:
+        return f"{cls.PACKAGE_ROOT}.{module}.{class_name}"
 
     @classmethod
-    def get_service(cls, name: str) -> Any:
-        return cls._services.get(name)
+    def generate_manifest(cls, config: AndroidOSConfig) -> str:
+        """Generate AndroidManifest.xml for ARKHE-OS."""
+        return f"""<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="{cls.PACKAGE_ROOT}">
+
+    <uses-sdk android:minSdkVersion="{config.min_sdk}"
+              android:targetSdkVersion="{config.target_sdk}" />
+
+    <!-- Permissions for ARKHE substrates -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Hardware features -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
+
+    <application
+        android:name=".ArkheApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ArkheOS"
+        android:extractNativeLibs="true">
+
+        <!-- Main Activity -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ArkheOS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ARKHE Services -->
+        <service
+            android:name=".services.ArkheMainService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".services.PerceptionService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <service
+            android:name=".services.CommitService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Content Provider for epistemic commits -->
+        <provider
+            android:name=".provider.EpistemicProvider"
+            android:authorities="{cls.PACKAGE_ROOT}.provider"
+            android:exported="false" />
+
+    </application>
+</manifest>
+"""
 
 
-# --- ARKHE SYSTEM SERVICES ---
+# ═══════════════════════════════════════════════════════════════════
+# Kotlin Source Generators
+# ═══════════════════════════════════════════════════════════════════
 
-class ArkheMemoryService:
-    """Substrato 912 (Memória): Persistência cross-app de commits epistémicos."""
-    def __init__(self):
-        self.memories = []
+class KotlinSourceGenerator:
+    """Generate Kotlin source files for ARKHE-OS Android."""
 
-    def commit_memory(self, content: dict, relevance: float) -> str:
-        content_str = json.dumps(content, sort_keys=True)
-        commit_id = hashlib.sha3_256(content_str.encode()).hexdigest()[:16]
-        self.memories.append({
-            "commit_id": commit_id,
-            "content": content,
-            "relevance": relevance,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-        print(f"[ArkheMemoryService] Commited memory {commit_id} with relevance {relevance}")
-        return commit_id
+    @staticmethod
+    def generate_arkhe_application(config: AndroidOSConfig) -> str:
+        """Generate ArkheApplication.kt — Application class."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}
 
-    def get_agent_status(self) -> dict:
+import android.app.Application
+import android.content.Context
+import cathedral.arkhe.os.core.OmniAgent
+import cathedral.arkhe.os.core.ArkheConfig
+import cathedral.arkhe.os.security.KeystoreManager
+
+/**
+ * ARKHE-OS Android Application
+ * Substrate 929 — Main entry point
+ */
+class ArkheApplication : Application() {{
+
+    companion object {{
+        lateinit var instance: ArkheApplication
+            private set
+    }}
+
+    lateinit var omniAgent: OmniAgent
+        private set
+
+    lateinit var keystore: KeystoreManager
+        private set
+
+    override fun onCreate() {{
+        super.onCreate()
+        instance = this
+
+        // Initialize security layer
+        keystore = KeystoreManager(this)
+
+        // Initialize ARKHE Omni-Agent
+        val config = ArkheConfig(
+            maturity = ArkheConfig.Maturity.ADULT,
+            qemuEnabled = false,
+            qpowEnabled = true,
+            substrateModules = listOf({', '.join(f'"{s}"' for s in config.substrate_modules)})
+        )
+
+        omniAgent = OmniAgent(config, this)
+
+        // Start background services
+        ArkheMainService.start(this)
+    }}
+
+    override fun onTerminate() {{
+        super.onTerminate()
+        omniAgent.shutdown()
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_main_activity() -> str:
+        """Generate MainActivity.kt with Jetpack Compose."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.ui
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import cathedral.arkhe.os.ArkheApplication
+import cathedral.arkhe.os.ui.theme.CathedralTheme
+import cathedral.arkhe.os.ui.screens.CathedralDashboardScreen
+
+/**
+ * Main Activity — ARKHE-OS Cathedral Dashboard
+ * Integrates Substrate 928 (Jetpack Compose Bridge)
+ */
+class MainActivity : ComponentActivity() {{
+
+    override fun onCreate(savedInstanceState: Bundle?) {{
+        super.onCreate(savedInstanceState)
+
+        val agent = (application as ArkheApplication).omniAgent
+
+        setContent {{
+            CathedralTheme {{
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {{
+                    CathedralDashboardScreen(agent = agent)
+                }}
+            }}
+        }}
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_cathedral_theme() -> str:
+        """Generate CathedralTheme.kt — Material 3 theme."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.ui.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Cathedral Theme — ARKHE-OS Design System
+ * Maps to Substrate 255.1 (Epistemic Signature UI) and 928 (Compose Bridge)
+ */
+
+// Liturgical colors
+val Crimson = Color(0xFF8B0000)
+val Gold = Color(0xFFFFD700)
+val RoyalBlue = Color(0xFF4169E1)
+val ForestGreen = Color(0xFF228B22)
+val Stone = Color(0xFF2C2C2C)
+val Light = Color(0xFFF5F5DC)
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Gold,
+    secondary = RoyalBlue,
+    tertiary = ForestGreen,
+    background = Stone,
+    surface = Stone.copy(alpha = 0.8f),
+    onPrimary = Stone,
+    onSecondary = Light,
+    onBackground = Light,
+    onSurface = Light,
+    error = Crimson,
+    onError = Light
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Crimson,
+    secondary = RoyalBlue,
+    tertiary = ForestGreen,
+    background = Light,
+    surface = Color.White,
+    onPrimary = Light,
+    onSecondary = Stone,
+    onBackground = Stone,
+    onSurface = Stone,
+    error = Crimson,
+    onError = Light
+)
+
+@Composable
+fun CathedralTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {{
+    val colorScheme = when {{
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {{
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
+        }}
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }}
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = CathedralTypography,
+        shapes = CathedralShapes,
+        content = content
+    )
+}}
+
+val CathedralTypography = Typography(
+    // Custom typography for liturgical hierarchy
+)
+
+val CathedralShapes = Shapes(
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp)
+)
+"""
+
+    @staticmethod
+    def generate_dashboard_screen() -> str:
+        """Generate CathedralDashboardScreen.kt."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.ui.screens
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import cathedral.arkhe.os.core.OmniAgent
+import cathedral.arkhe.os.ui.components.*
+
+/**
+ * Cathedral Dashboard Screen
+ * Main UI for ARKHE-OS Android
+ */
+@Composable
+fun CathedralDashboardScreen(agent: OmniAgent) {{
+    val status by remember {{ agent.statusFlow }}.collectAsState()
+    val substrates by remember {{ agent.substratesFlow }}.collectAsState()
+    val commits by remember {{ agent.commitsFlow }}.collectAsState()
+
+    Scaffold(
+        topBar = {{ CathedralTopBar(status) }},
+        bottomBar = {{ CathedralBottomBar() }},
+        floatingActionButton = {{ CommitFAB(agent) }}
+    ) {{ padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {{
+            // Cathedral Window (Vitral)
+            item {{
+                CathedralWindow(
+                    lightIntensity = status.phiC,
+                    theosis = status.theosis
+                )
+            }}
+
+            // Status Bar
+            item {{
+                StatusBar(status)
+            }}
+
+            // Substrate Grid
+            items(substrates.chunked(2)) {{ row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {{
+                    row.forEach {{ substrate ->
+                        SubstrateCard(substrate = substrate)
+                    }}
+                }}
+            }}
+
+            // Pipeline Flow
+            item {{
+                PipelineFlow(
+                    stages = listOf("Perceive", "Reason", "Act", "Commit"),
+                    activeIndex = status.pipelineStage
+                )
+            }}
+
+            // Commit Log
+            items(commits) {{ commit ->
+                CommitItem(commit = commit)
+            }}
+        }}
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_omni_agent_kt() -> str:
+        """Generate OmniAgent.kt — Kotlin version of core agent."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.core
+
+import android.content.Context
+import kotlinx.coroutines.flow.*
+import cathedral.arkhe.os.substrates.*
+import cathedral.arkhe.os.hal.SensorHAL
+import cathedral.arkhe.os.hal.CameraHAL
+
+/**
+ * OmniAgent — Kotlin implementation of ARKHE-OS core
+ * Android-native version of Python arkhe_omni_v2.py
+ */
+class OmniAgent(
+    val config: ArkheConfig,
+    private val context: Context
+) {{
+
+    // State flows for Compose recomposition
+    private val _statusFlow = MutableStateFlow(AgentStatus())
+    val statusFlow: StateFlow<AgentStatus> = _statusFlow.asStateFlow()
+
+    private val _substratesFlow = MutableStateFlow<List<Substrate>>(emptyList())
+    val substratesFlow: StateFlow<List<Substrate>> = _substratesFlow.asStateFlow()
+
+    private val _commitsFlow = MutableStateFlow<List<EpistemicCommit>>(emptyList())
+    val commitsFlow: StateFlow<List<EpistemicCommit>> = _commitsFlow.asStateFlow()
+
+    // Substrate registry
+    private val substrates = mutableMapOf<String, SubstrateModule>()
+
+    // Hardware Abstraction Layers
+    private val sensorHAL = SensorHAL()
+    private val cameraHAL = CameraHAL()
+
+    init {{
+        initializeSubstrates()
+        startPerceptionLoop()
+    }}
+
+    private fun initializeSubstrates() {{
+        config.substrateModules.forEach {{ id ->
+            when (id) {{
+                "920" -> substrates[id] = CoreModule()
+                "921" -> substrates[id] = InterfaceModule()
+                "922" -> substrates[id] = DeployModule()
+                "923" -> substrates[id] = BlockchainModule()
+                "924" -> substrates[id] = MotionModule()
+                "925" -> substrates[id] = GatewayModule()
+                "926" -> substrates[id] = BrowserModule()
+                "927" -> substrates[id] = PermawebModule()
+                "928" -> substrates[id] = ComposeModule()
+            }}
+        }}
+
+        _substratesFlow.value = substrates.values.map {{ it.toSubstrate() }}
+    }}
+
+    private fun startPerceptionLoop() {{
+        // Start background tasks
+    }}
+
+    fun perceive(input: String): PerceptionResult {{
+        // Android-native perception with sensor fusion via JNI HALs
+        val sensorData = collectSensorData()
+        val webContext = substrates["926"]?.perceive(input)
+
+        val result = PerceptionResult(
+            input = input,
+            confidence = calculateConfidence(sensorData, webContext),
+            sensorData = sensorData
+        )
+
+        _statusFlow.value = _statusFlow.value.copy(
+            lastPerception = result,
+            perceptions = _statusFlow.value.perceptions + 1
+        )
+
+        return result
+    }}
+
+    fun commit(content: Map<String, Any>): String {{
+        val commit = EpistemicCommit(
+            id = generateCommitId(),
+            content = content,
+            timestamp = System.currentTimeMillis(),
+            seal = computeSeal(content)
+        )
+
+        _commitsFlow.value = _commitsFlow.value + commit
+
+        // Persist to Arweave (927) if available
+        substrates["927"]?.persist(commit)
+
+        return commit.id
+    }}
+
+    fun shutdown() {{
+        substrates.values.forEach {{ it.shutdown() }}
+    }}
+
+    private fun collectSensorData(): SensorData {{
+        // Use real HALs over JNI
+        return SensorData(
+            camera = cameraHAL.captureFrame(),
+            location = null,  // Requires permission
+            accelerometer = sensorHAL.getAccelerometerData()
+        )
+    }}
+
+    private fun calculateConfidence(sensorData: SensorData, webContext: Any?): Float {{
+        return 0.95f  // Simplified
+    }}
+
+    private fun generateCommitId(): String {{
+        return "commit-${{System.currentTimeMillis()}}-${{hashCode()}}"
+    }}
+
+    private fun computeSeal(content: Map<String, Any>): String {{
+        return hashlib.sha3_256(content.toString().toByteArray())
+            .hexdigest().take(16)
+    }}
+}}
+
+// Data classes
+data class AgentStatus(
+    val phiC: Float = 0.97f,
+    val h: Float = 0.05f,
+    val theosis: Float = 0.99f,
+    val pipelineStage: Int = 0,
+    val perceptions: Int = 0,
+    val commits: Int = 0,
+    val lastPerception: PerceptionResult? = null
+)
+
+data class PerceptionResult(
+    val input: String,
+    val confidence: Float,
+    val sensorData: SensorData
+)
+
+data class SensorData(
+    val camera: Any?,
+    val location: Any?,
+    val accelerometer: Any?
+)
+
+data class EpistemicCommit(
+    val id: String,
+    val content: Map<String, Any>,
+    val timestamp: Long,
+    val seal: String
+)
+
+data class Substrate(
+    val id: String,
+    val name: String,
+    val status: String,
+    val phiC: Float,
+    val h: Float,
+    val theosis: Float,
+    val seal: String
+)
+"""
+
+    @staticmethod
+    def generate_sensor_hal() -> str:
+        """Generate SensorHAL.kt mapped to Android HAL via JNI."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.hal
+
+/**
+ * Substrato 929 - Hardware Abstraction Layer
+ * Native JNI bridge to Android Sensors (Accelerometer, Gyro)
+ */
+class SensorHAL {{
+    init {{
+        System.loadLibrary("arkhe_sensors")
+    }}
+
+    external fun initSensors(): Boolean
+    external fun readAccelerometer(): FloatArray
+    external fun readGyroscope(): FloatArray
+
+    fun getAccelerometerData(): FloatArray {{
+        return readAccelerometer()
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_camera_hal() -> str:
+        """Generate CameraHAL.kt mapped to Android HAL via JNI."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.hal
+
+/**
+ * Substrato 929 - Hardware Abstraction Layer
+ * Native JNI bridge to Android Camera API
+ */
+class CameraHAL {{
+    init {{
+        System.loadLibrary("arkhe_camera")
+    }}
+
+    external fun openCamera(cameraId: Int): Boolean
+    external fun grabFrame(cameraId: Int): ByteArray
+    external fun closeCamera(cameraId: Int)
+
+    fun captureFrame(): ByteArray? {{
+        if (openCamera(0)) {{
+            val frame = grabFrame(0)
+            closeCamera(0)
+            return frame
+        }}
+        return null
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_temporal_chain() -> str:
+        """Generate TemporalChain.kt integrating Web3j (Substrato 923)."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.substrates.s923
+
+import org.web3j.crypto.Credentials
+import org.web3j.protocol.Web3j
+import org.web3j.protocol.http.HttpService
+import org.web3j.tx.RawTransactionManager
+import java.math.BigInteger
+
+/**
+ * Substrato 923 - TemporalChain
+ * Signs and broadcasts Ethereum transactions natively from the device.
+ */
+class TemporalChain(private val rpcUrl: String, private val privateKey: String) {{
+    private val web3j: Web3j = Web3j.build(HttpService(rpcUrl))
+    private val credentials = Credentials.create(privateKey)
+    private val transactionManager = RawTransactionManager(web3j, credentials, 1L)
+
+    fun signAndSendTransaction(toAddress: String, data: String): String {{
+        val ethSendTransaction = transactionManager.sendTransaction(
+            BigInteger.valueOf(20_000_000_000L), // gasPrice
+            BigInteger.valueOf(100_000L),        // gasLimit
+            toAddress,
+            data,
+            BigInteger.ZERO                      // value
+        )
+        return ethSendTransaction.transactionHash ?: "FAILED"
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_permaweb_sync_job() -> str:
+        """Generate PermawebSyncJob.kt using Arweave4j (Substrato 927 & 922)."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.services
+
+import android.app.job.JobParameters
+import android.app.job.JobService
+import io.arweave.arweave4j.Arweave
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+/**
+ * Substrato 927 (Permaweb) & 922 (Deploy)
+ * JobScheduler service to periodically sync agent state to Arweave.
+ */
+class PermawebSyncJob : JobService() {{
+    private val arweave = Arweave()
+
+    override fun onStartJob(params: JobParameters?): Boolean {{
+        CoroutineScope(Dispatchers.IO).launch {{
+            try {{
+                // Collect state (mocked)
+                val agentState = "ARKHE-STATE-${{System.currentTimeMillis()}}"
+
+                // Real upload using Arweave4j
+                val transaction = arweave.createTransaction(agentState.toByteArray())
+                arweave.signTransaction(transaction)
+                arweave.submitTransaction(transaction)
+
+                jobFinished(params, false)
+            }} catch (e: Exception) {{
+                jobFinished(params, true) // Retry on failure
+            }}
+        }}
+        return true // Work is running in background thread
+    }}
+
+    override fun onStopJob(params: JobParameters?): Boolean {{
+        return true // Retry later
+    }}
+}}
+"""
+
+    @staticmethod
+    def generate_api_server() -> str:
+        """Generate ArkheAPIServer.kt using NanoHTTPD (Substrato 921)."""
+        return f"""package {AndroidPackageStructure.PACKAGE_ROOT}.substrates.s921
+
+import fi.iki.elonen.NanoHTTPD
+
+/**
+ * Substrato 921 - CLI/API
+ * Embedded HTTP Server to manage the device remotely.
+ */
+class ArkheAPIServer(port: Int = 8080) : NanoHTTPD(port) {{
+
+    override fun serve(session: IHTTPSession): Response {{
+        val uri = session.uri
+
+        return when (uri) {{
+            "/status" -> newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "ARKHE-OS ONLINE")
+            "/commit" -> newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "COMMIT RECEIVED")
+            else -> newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
+        }}
+    }}
+
+    fun startServer() {{
+        start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+    }}
+
+    fun stopServer() {{
+        stop()
+    }}
+}}
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Build System Integration
+# ═══════════════════════════════════════════════════════════════════
+
+class GradleBuildGenerator:
+    """Generate Gradle build files for ARKHE-OS Android."""
+
+    @staticmethod
+    def generate_build_gradle_app(config: AndroidOSConfig) -> str:
+        """Generate app-level build.gradle.kts."""
+        return f"""plugins {{
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
+}}
+
+android {{
+    namespace = "{AndroidPackageStructure.PACKAGE_ROOT}"
+    compileSdk = {config.target_sdk}
+
+    defaultConfig {{
+        applicationId = "{AndroidPackageStructure.PACKAGE_ROOT}"
+        minSdk = {config.min_sdk}
+        targetSdk = {config.target_sdk}
+        versionCode = 1
+        versionName = "2.0.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // ARKHE-specific build config
+        buildConfigField("String", "ARKHE_VERSION", "\\"2.0.0\\"")
+        buildConfigField("String", "ARKHE_ARCHITECT", "\\"0009-0005-2697-4668\\"")
+    }}
+
+    buildFeatures {{
+        compose = true
+        buildConfig = true
+    }}
+
+    composeOptions {{
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }}
+
+    kotlinOptions {{
+        jvmTarget = "1.8"
+    }}
+}}
+
+dependencies {{
+    // AndroidX Core
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+
+    // Jetpack Compose BOM
+    val composeBom = platform("androidx.compose:compose-bom:{config.compose_bom}")
+    implementation(composeBom)
+    androidTestImplementation(composeBom)
+
+    // Compose UI
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // ViewModel
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Security
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.biometric:biometric:1.1.0")
+
+    // Networking
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Web3 (Substrato 923)
+    implementation("org.web3j:core:4.9.8-android")
+
+    // Arweave (Substrato 927)
+    implementation("io.arweave:arweave4j:1.0")
+
+    // Embedded HTTP Server (Substrato 921)
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.8.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}}
+"""
+
+    @staticmethod
+    def generate_settings_gradle() -> str:
+        """Generate settings.gradle.kts."""
+        return """pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "ARKHE-OS"
+include(":app")
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# AOSP Integration
+# ═══════════════════════════════════════════════════════════════════
+
+class AOSPIntegration:
+    """Integration with Android Open Source Project (AOSP)."""
+
+    @staticmethod
+    def generate_aosp_mk() -> str:
+        """Generate Android.mk for AOSP build."""
+        return """# ARKHE-OS AOSP Integration
+# Substrate 929
+
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := arkhe-os
+LOCAL_MODULE_TAGS := optional
+LOCAL_SRC_FILES :=     $(call all-java-files-under, src)     $(call all-kotlin-files-under, src)
+LOCAL_PACKAGE_NAME := ARKHEOS
+LOCAL_CERTIFICATE := platform
+LOCAL_PRIVILEGED_MODULE := true
+LOCAL_USE_AAPT2 := true
+LOCAL_RESOURCE_DIR := $(LOCAL_PATH)/res
+include $(BUILD_PACKAGE)
+"""
+
+    @staticmethod
+    def generate_selinux_policy() -> str:
+        """Generate SELinux policy for ARKHE-OS."""
+        return """# SELinux Policy for ARKHE-OS
+# Substrate 929 — Security enforcement
+
+type arkhe_app, domain;
+type arkhe_app_exec, exec_type, file_type;
+
+# App domain
+init_daemon_domain(arkhe_app)
+
+# Permissions
+allow arkhe_app arkhe_app_exec:file read;
+allow arkhe_app self:process { signal sigchld };
+allow arkhe_app activity_service:service_manager find;
+
+# Network
+allow arkhe_app inet:tcp_socket { create connect read write };
+allow arkhe_app inet:udp_socket { create connect read write };
+
+# Sensors
+allow arkhe_app sensorservice_service:service_manager find;
+allow arkhe_app sensor_device:chr_file { open read };
+
+# Camera
+allow arkhe_app cameraserver_service:service_manager find;
+allow arkhe_app camera_device:chr_file { open read write };
+
+# Location
+allow arkhe_app location_service:service_manager find;
+allow arkhe_app gps_device:chr_file { open read };
+
+# Storage
+allow arkhe_app arkhe_app_data_file:dir create_dir_perms;
+allow arkhe_app arkhe_app_data_file:file create_file_perms;
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Main Bridge Class
+# ═══════════════════════════════════════════════════════════════════
+
+class ArkheAndroidOS:
+    """
+    Substrate 929 — ARKHE-AS-ANDROID-OS
+
+    Main orchestrator for ARKHE-OS Android deployment.
+    Generates complete Android project structure.
+    """
+
+    def __init__(self, config: Optional[AndroidOSConfig] = None):
+        self.config = config or AndroidOSConfig()
+        self.kotlin_gen = KotlinSourceGenerator()
+        self.gradle_gen = GradleBuildGenerator()
+        self.aosp_gen = AOSPIntegration()
+
+    def generate_project(self, output_dir: str = "arkhe-android") -> Dict:
+        """Generate complete Android project."""
+        import os
+
+        structure = {
+            "manifest": self._generate_manifest(),
+            "kotlin_sources": self._generate_kotlin_sources(),
+            "gradle_files": self._generate_gradle_files(),
+            "aosp_files": self._generate_aosp_files(),
+            "resources": self._generate_resources(),
+        }
+
         return {
-            "agentId": "ARKHE-MOBILE-929",
-            "substratesActive": 8,
-            "komogorovBits": 8192
+            "status": "generated",
+            "output_dir": output_dir,
+            "files_count": sum(len(v) for v in structure.values()),
+            "structure": structure,
+        }
+
+    def _generate_manifest(self) -> Dict:
+        return {
+            "AndroidManifest.xml": AndroidPackageStructure.generate_manifest(self.config),
+        }
+
+    def _generate_kotlin_sources(self) -> Dict:
+        return {
+            "ArkheApplication.kt": self.kotlin_gen.generate_arkhe_application(self.config),
+            "MainActivity.kt": self.kotlin_gen.generate_main_activity(),
+            "CathedralTheme.kt": self.kotlin_gen.generate_cathedral_theme(),
+            "CathedralDashboardScreen.kt": self.kotlin_gen.generate_dashboard_screen(),
+            "OmniAgent.kt": self.kotlin_gen.generate_omni_agent_kt(),
+            "SensorHAL.kt": self.kotlin_gen.generate_sensor_hal(),
+            "CameraHAL.kt": self.kotlin_gen.generate_camera_hal(),
+            "TemporalChain.kt": self.kotlin_gen.generate_temporal_chain(),
+            "PermawebSyncJob.kt": self.kotlin_gen.generate_permaweb_sync_job(),
+            "ArkheAPIServer.kt": self.kotlin_gen.generate_api_server(),
+        }
+
+    def _generate_gradle_files(self) -> Dict:
+        return {
+            "build.gradle.kts": self.gradle_gen.generate_build_gradle_app(self.config),
+            "settings.gradle.kts": self.gradle_gen.generate_settings_gradle(),
+        }
+
+    def _generate_aosp_files(self) -> Dict:
+        return {
+            "Android.mk": self.aosp_gen.generate_aosp_mk(),
+            "arkhe.te": self.aosp_gen.generate_selinux_policy(),
+        }
+
+    def _generate_resources(self) -> Dict:
+        return {
+            "strings.xml": """<resources>
+    <string name="app_name">ARKHE-OS</string>
+    <string name="cathedral_title">Catedral ARKHE</string>
+    <string name="substrate_status">Status do Substrato</string>
+    <string name="commit_memory">Commit Epistêmico</string>
+</resources>""",
+            "themes.xml": """<resources>
+    <style name="Theme.ArkheOS" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/crimson</item>
+        <item name="android:colorAccent">@color/gold</item>
+    </style>
+</resources>""",
+        }
+
+    def get_status(self) -> Dict:
+        return {
+            "substrate": "929",
+            "aosp_version": self.config.aosp_version,
+            "target_sdk": self.config.target_sdk,
+            "kotlin_version": self.config.kotlin_version,
+            "compose_bom": self.config.compose_bom,
+            "substrates_integrated": len(self.config.substrate_modules),
+            "security": {
+                "keystore": self.config.use_android_keystore,
+                "biometric": self.config.biometric_auth,
+                "selinux": self.config.selinux_mode,
+            },
         }
 
 
-class ArkheCryptoService:
-    """Substrato 255 (Cripto-Trivium): FHE, ZK e PQC como operações de sistema."""
-    def sign_message(self, message: str) -> str:
-        # Mock PQC signature
-        signature = f"PQC-SIG-{hashlib.sha256(message.encode()).hexdigest()[:20]}"
-        print(f"[ArkheCryptoService] Signed message: {message[:10]}... -> {signature}")
-        return signature
-
-
-class ArkheAgencyService:
-    """Substrato 891 (Agency): Motor de decisão autónoma."""
-    def request_action(self, intent: str) -> str:
-        print(f"[ArkheAgencyService] Processing autonomous intent: {intent}")
-        return f"ACTION_DISPATCHED:{intent.upper()}"
-
-
-# --- OS BOOT SEQUENCE ---
-
-def boot_arkhe_os():
-    print("\n--- BOOTING ARKHE-ANDROID OS ---")
-    ArkheBinder.register_service("ArkheMemoryService", ArkheMemoryService())
-    ArkheBinder.register_service("ArkheCryptoService", ArkheCryptoService())
-    ArkheBinder.register_service("ArkheAgencyService", ArkheAgencyService())
-    print("--- BOOT COMPLETE ---\n")
-
-
-# --- APPLICATION LAYER SIMULATION ---
-
-class AndroidApp:
-    """Simulates an Android App requesting Arkhe System Services."""
-    def __init__(self, name: str):
-        self.name = name
-
-    def perform_actions(self):
-        print(f"[{self.name}] App started.")
-
-        # Access Memory Service
-        memory_svc = ArkheBinder.get_service("ArkheMemoryService")
-        if memory_svc:
-            memory_svc.commit_memory({"event": "user_login", "app": self.name}, 0.95)
-
-        # Access Crypto Service
-        crypto_svc = ArkheBinder.get_service("ArkheCryptoService")
-        if crypto_svc:
-            crypto_svc.sign_message("transaction_payload_123")
-
-        # Render Composable Status
-        self.render_arkhe_status_card()
-
-    def render_arkhe_status_card(self):
-        """Mocks the @Composable ArkheStatusCard() widget."""
-        memory_svc = ArkheBinder.get_service("ArkheMemoryService")
-        if memory_svc:
-            status = memory_svc.get_agent_status()
-            print("\n┌────────────────────────────────────────┐")
-            print(f"│  UI Compose Widget: ArkheStatusCard    │")
-            print(f"│  Catedral ARKHE — {status['agentId']}     │")
-            print(f"│  Substratos: {status['substratesActive']}                         │")
-            print(f"│  Complexidade K: {status['komogorovBits']} bits             │")
-            print("└────────────────────────────────────────┘\n")
-
-
+# ═══════════════════════════════════════════════════════════════════
+# Demo
+# ═══════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    # Simulate System Boot
-    boot_arkhe_os()
+    print("📱 Substrate 929 — ARKHE-AS-ANDROID-OS Demo")
+    print("=" * 60)
 
-    # Simulate an App lifecycle
-    wallet_app = AndroidApp("ArkheWallet")
-    wallet_app.perform_actions()
+    config = AndroidOSConfig(
+        aosp_version="android-14.0.0_r30",
+        target_sdk=34,
+        substrate_modules=["920", "921", "922", "923", "924", "925", "926", "927", "928"],
+    )
+
+    android_os = ArkheAndroidOS(config)
+
+    # Generate project
+    project = android_os.generate_project("arkhe-android")
+    print(f"\n📦 Project generated:")
+    print(f"   Output dir: {project['output_dir']}")
+    print(f"   Files: {project['files_count']}")
+
+    # Show structure
+    print(f"\n📁 Structure:")
+    for category, files in project['structure'].items():
+        print(f"   {category}: {len(files)} files")
+        for fname in files:
+            print(f"      - {fname}")
+
+    # Status
+    status = android_os.get_status()
+    print(f"\n📊 Status:")
+    for k, v in status.items():
+        print(f"   {k}: {v}")
+
+    print("\n✅ Substrate 929 demo complete")
