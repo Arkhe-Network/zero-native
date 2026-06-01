@@ -41,3 +41,7 @@
   name: "ARKHE-ANDROID-OS-BRIDGE"
   category: "mobile-os"
   links: ["912", "255", "905", "917", "891", "918", "927", "920", "928"]
+"1010":
+  name: "ZKCBDC"
+  category: "Infraestrutura Financeira / Privacidade / ZK-Proofs"
+  links: ["955", "954", "923", "990", "979", "989.x"]
