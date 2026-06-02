@@ -45,3 +45,7 @@
   name: "ZKCBDC"
   category: "Infraestrutura Financeira / Privacidade / ZK-Proofs"
   links: ["955", "954", "923", "990", "979", "989.x"]
+"1028":
+  name: "Catedral Coreutils"
+  category: "system"
+  links: ["1027", "965", "970", "972", "989.y.5", "989.y.6.1"]
