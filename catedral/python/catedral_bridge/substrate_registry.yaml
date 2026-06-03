@@ -45,3 +45,7 @@
   name: "ZKCBDC"
   category: "Infraestrutura Financeira / Privacidade / ZK-Proofs"
   links: ["955", "954", "923", "990", "979", "989.x"]
+"1040":
+  name: "HERMES-CATHEDRAL BRIDGE"
+  category: "agent"
+  links: ["989.y.5", "968", "972", "923", "970", "989.y.6.1"]
